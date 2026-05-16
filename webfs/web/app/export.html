@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Export</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 16px; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); }
+    label { display: block; margin-top: 12px; font-size: 13px; opacity: 0.7; }
+    select, input { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; box-sizing: border-box; background: var(--tg-theme-secondary-bg-color, #f5f5f5); color: var(--tg-theme-text-color, #000); }
+    .quick-btns { display: flex; gap: 8px; margin-top: 8px; }
+    .quick-btns button { flex: 1; padding: 8px; background: var(--tg-theme-secondary-bg-color, #f0f0f0); color: var(--tg-theme-text-color, #000); border: 1px solid #ddd; border-radius: 8px; font-size: 13px; cursor: pointer; margin-top: 0; }
+    button.primary { width: 100%; margin-top: 20px; padding: 14px; background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+    #error { color: red; margin-top: 10px; display: none; font-size: 13px; }
+    #status { margin-top: 12px; text-align: center; font-size: 14px; }
+    input[type="date"] { -webkit-appearance: none; appearance: none; }
+  </style>
+</head>
+<body>
+  <h2>Export to Excel</h2>
+  <div id="error"></div>
+
+  <label>Ledger</label>
+  <select id="ledger">
+    <option value="0">All Ledgers</option>
+  </select>
+
+  <label>Date Range</label>
+  <div class="quick-btns">
+    <button onclick="setThisMonth()">This Month</button>
+    <button onclick="setThisYear()">This Year</button>
+  </div>
+  <label>Start</label>
+  <input type="date" id="start">
+  <label>End</label>
+  <input type="date" id="end">
+
+  <button class="primary" onclick="doExport()">Download Excel</button>
+  <div id="status"></div>
+
+  <script src="../static/app.js"></script>
+  <script>
+    async function init() {
+      const res = await apiFetch("/api/ledgers");
+      if (!res.ok) return;
+      const ledgers = await res.json();
+      const sel = document.getElementById("ledger");
+      ledgers.forEach(l => {
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = l.emoji + " " + l.name;
+        sel.appendChild(opt);
+      });
+      setThisMonth();
+    }
+
+    function setThisMonth() {
+      const now = new Date();
+      document.getElementById("start").value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+      document.getElementById("end").value = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+    }
+
+    function setThisYear() {
+      const y = new Date().getFullYear();
+      document.getElementById("start").value = y + "-01-01";
+      document.getElementById("end").value = y + "-12-31";
+    }
+
+    async function doExport() {
+      hideError();
+      const ledgerID = document.getElementById("ledger").value;
+      const start = document.getElementById("start").value;
+      const end = document.getElementById("end").value;
+      if (!start || !end) { showError("Select a date range."); return; }
+
+      document.getElementById("status").textContent = "Generating file...";
+      const res = await apiFetch(`/api/export?ledger_id=${ledgerID}&start=${start}&end=${end}`);
+      if (!res.ok) {
+        document.getElementById("status").textContent = "";
+        showError("Failed to export.");
+        return;
+      }
+      tg.close();
+    }
+
+    init();
+  </script>
+</body>
+</html>

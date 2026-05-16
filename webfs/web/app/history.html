@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 0; margin: 0; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); }
+    .page { display: none; padding: 16px; }
+    .page.active { display: block; }
+    h2 { margin: 0 0 16px; font-size: 18px; }
+    .back-btn { background: none; border: none; color: var(--tg-theme-button-color, #2481cc); font-size: 14px; padding: 0; cursor: pointer; margin-bottom: 12px; display: block; }
+    .list { list-style: none; margin: 0; padding: 0; }
+    .list li { padding: 14px 12px; border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
+    .list li:active { background: var(--tg-theme-secondary-bg-color, #f5f5f5); }
+    .list li .chevron { opacity: 0.4; font-size: 12px; }
+    .item-left { display: flex; flex-direction: column; gap: 3px; }
+    .item-date { font-size: 12px; opacity: 0.6; }
+    .item-right { text-align: right; display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+    .item-amount { font-size: 15px; font-weight: 500; }
+    .item-amount.expense { color: #e74c3c; }
+    .item-amount.income { color: #27ae60; }
+    .item-base { font-size: 11px; opacity: 0.5; }
+    .badge { font-size: 11px; background: var(--tg-theme-secondary-bg-color, #eee); padding: 2px 6px; border-radius: 4px; }
+    #error { color: red; margin: 16px; font-size: 13px; display: none; }
+    #loading { text-align: center; margin: 40px 16px; opacity: 0.6; }
+
+    /* Edit form */
+    label { display: block; margin-top: 12px; font-size: 13px; opacity: 0.7; }
+    select, input { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; background: var(--tg-theme-secondary-bg-color, #f5f5f5); color: var(--tg-theme-text-color, #000); }
+    input[type="date"] { -webkit-appearance: none; appearance: none; }
+    .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-row button { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 15px; cursor: pointer; }
+    .btn-save { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
+    .btn-delete { background: #e74c3c; color: #fff; }
+    #edit-error { color: red; margin-top: 10px; display: none; font-size: 13px; }
+    #category-row { display: block; }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading...</div>
+  <div id="error"></div>
+
+  <!-- Page 1: Years -->
+  <div id="page-years" class="page">
+    <h2>📜 History</h2>
+    <ul class="list" id="years-list"></ul>
+  </div>
+
+  <!-- Page 2: Months -->
+  <div id="page-months" class="page">
+    <button class="back-btn" onclick="showYears()">← Back</button>
+    <h2 id="months-title"></h2>
+    <ul class="list" id="months-list"></ul>
+  </div>
+
+  <!-- Page 3: Records list -->
+  <div id="page-records" class="page">
+    <button class="back-btn" onclick="showMonths()">← Back</button>
+    <h2 id="records-title"></h2>
+    <ul class="list" id="records-list"></ul>
+  </div>
+
+  <!-- Page 4: Edit -->
+  <div id="page-edit" class="page">
+    <button class="back-btn" onclick="showRecords()">← Back</button>
+    <h2>Edit Record</h2>
+    <div id="edit-error"></div>
+
+    <label>Ledger</label>
+    <select id="edit-ledger"></select>
+
+    <label>Type</label>
+    <select id="edit-type" onchange="onEditTypeChange()">
+      <option value="expense">Expense</option>
+      <option value="income">Income</option>
+    </select>
+
+    <div id="category-row">
+      <label>Category</label>
+      <select id="edit-category"></select>
+    </div>
+
+    <label>Currency</label>
+    <select id="edit-currency"></select>
+
+    <label>Amount</label>
+    <input type="number" id="edit-amount" min="0.01" step="0.01">
+
+    <label>Date</label>
+    <input type="date" id="edit-date">
+
+    <label>Description (optional)</label>
+    <input type="text" id="edit-description" maxlength="100">
+
+    <div class="btn-row">
+      <button class="btn-delete" onclick="deleteRecord()">🗑 Delete</button>
+      <button class="btn-save" onclick="saveRecord()">Save</button>
+    </div>
+  </div>
+
+  <script src="../static/app.js"></script>
+  <script>
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    let currentYear = null;
+    let currentMonth = null;
+    let currentRecordID = null;
+    let cats = [], ledgers = [], currencies = [];
+
+    function showPage(id) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg; el.style.display = 'block';
+      document.getElementById('loading').style.display = 'none';
+    }
+
+    async function init() {
+      const [catsRes, ledgersRes, cursRes] = await Promise.all([
+        apiFetch('/api/categories'),
+        apiFetch('/api/ledgers'),
+        apiFetch('/api/currencies'),
+      ]);
+      if (!catsRes.ok || !ledgersRes.ok || !cursRes.ok) {
+        showError('Failed to load data.'); return;
+      }
+      cats = await catsRes.json();
+      ledgers = await ledgersRes.json();
+      currencies = await cursRes.json();
+
+      populateEditSelects();
+      loadYears();
+    }
+
+    function populateEditSelects() {
+      const catSel = document.getElementById('edit-category');
+      cats.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.code; o.textContent = c.emoji + ' ' + c.name;
+        catSel.appendChild(o);
+      });
+      const ledgerSel = document.getElementById('edit-ledger');
+      ledgers.forEach(l => {
+        const o = document.createElement('option');
+        o.value = l.id; o.textContent = l.emoji + ' ' + l.name;
+        ledgerSel.appendChild(o);
+      });
+      const curSel = document.getElementById('edit-currency');
+      currencies.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        curSel.appendChild(o);
+      });
+    }
+
+    async function loadYears() {
+      const res = await apiFetch('/api/expenses/years');
+      document.getElementById('loading').style.display = 'none';
+      if (res.status === 404) {
+        const data = await res.json();
+        showError(data.error); return;
+      }
+      if (!res.ok) { showError('Failed to load history.'); return; }
+      const years = await res.json();
+      const list = document.getElementById('years-list');
+      years.forEach(y => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${y}</span><span class="chevron">›</span>`;
+        li.onclick = () => loadMonths(y);
+        list.appendChild(li);
+      });
+      showPage('page-years');
+    }
+
+    async function loadMonths(year) {
+      currentYear = year;
+      const res = await apiFetch(`/api/expenses/months?year=${year}`);
+      if (!res.ok) { showError('Failed to load months.'); return; }
+      const months = await res.json();
+      document.getElementById('months-title').textContent = year;
+      const list = document.getElementById('months-list');
+      list.innerHTML = '';
+      months.forEach(m => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${MONTHS[m-1]}</span><span class="chevron">›</span>`;
+        li.onclick = () => loadRecords(year, m);
+        list.appendChild(li);
+      });
+      showPage('page-months');
+    }
+
+    function showYears() { showPage('page-years'); }
+    function showMonths() { loadMonths(currentYear); }
+
+    async function loadRecords(year, month) {
+      currentMonth = month;
+      const res = await apiFetch(`/api/expenses?year=${year}&month=${month}`);
+      if (!res.ok) { showError('Failed to load records.'); return; }
+      const records = await res.json();
+      document.getElementById('records-title').textContent = `${MONTHS[month-1]} ${year}`;
+      const list = document.getElementById('records-list');
+      list.innerHTML = '';
+      records.forEach(r => {
+        const li = document.createElement('li');
+        const sign = r.type === 'expense' ? '-' : '+';
+        const cls = r.type === 'expense' ? 'expense' : 'income';
+        const desc = r.description ? `<span class="badge">${r.description}</span>` : '';
+        const cat = r.category_code ? `<span class="badge">${r.category_code}</span>` : '';
+        li.innerHTML = `
+          <div class="item-left">
+            <span>${r.ledger_name} ${cat} ${desc}</span>
+            <span class="item-date">${r.date}</span>
+          </div>
+          <div class="item-right">
+            <span class="item-amount ${cls}">${sign}${r.amount} ${r.currency}</span>
+            <span class="item-base">${r.amount_in_base.toFixed(2)} ${r.base_currency}</span>
+          </div>`;
+        li.onclick = () => openEdit(r);
+        list.appendChild(li);
+      });
+      showPage('page-records');
+    }
+
+    function showRecords() { loadRecords(currentYear, currentMonth); }
+
+    function onEditTypeChange() {
+      const type = document.getElementById('edit-type').value;
+      document.getElementById('category-row').style.display = type === 'expense' ? 'block' : 'none';
+    }
+
+    function openEdit(r) {
+      currentRecordID = r.id;
+      document.getElementById('edit-type').value = r.type;
+      onEditTypeChange();
+      document.getElementById('edit-ledger').value = r.ledger_id;
+      document.getElementById('edit-category').value = r.category_code || '';
+      document.getElementById('edit-currency').value = r.currency;
+      document.getElementById('edit-amount').value = r.amount;
+      document.getElementById('edit-date').value = r.date;
+      document.getElementById('edit-description').value = r.description || '';
+      document.getElementById('edit-error').style.display = 'none';
+      showPage('page-edit');
+    }
+
+    async function saveRecord() {
+      const amount = parseFloat(document.getElementById('edit-amount').value);
+      if (!amount || amount < 0.01) { showEditError('Enter a valid amount.'); return; }
+      const type = document.getElementById('edit-type').value;
+      const payload = {
+        ledger_id: parseInt(document.getElementById('edit-ledger').value),
+        type,
+        category_code: type === 'expense' ? document.getElementById('edit-category').value : '',
+        currency: document.getElementById('edit-currency').value,
+        amount,
+        date: document.getElementById('edit-date').value,
+        description: document.getElementById('edit-description').value,
+      };
+      const res = await apiFetch(`/api/expenses/${currentRecordID}`, { method: 'PUT', body: JSON.stringify(payload) });
+      if (!res.ok) {
+        const data = await res.json();
+        showEditError(data.error || 'Failed to save.'); return;
+      }
+      showRecords();
+    }
+
+    async function deleteRecord() {
+      if (!currentRecordID) return;
+      const id = currentRecordID;
+      currentRecordID = null;
+      document.querySelector('.btn-delete').disabled = true;
+      const res = await apiFetch(`/api/expenses/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        currentRecordID = id;
+        document.querySelector('.btn-delete').disabled = false;
+        showEditError('Failed to delete.'); return;
+      }
+      showRecords();
+    }
+
+    function showEditError(msg) {
+      const el = document.getElementById('edit-error');
+      el.textContent = msg; el.style.display = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>

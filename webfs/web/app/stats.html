@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Statistics</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 16px; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); margin: 0; }
+    label { display: block; margin-top: 12px; font-size: 13px; opacity: 0.7; }
+    select, input { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; background: var(--tg-theme-secondary-bg-color, #f5f5f5); color: var(--tg-theme-text-color, #000); }
+    input[type="date"] { -webkit-appearance: none; appearance: none; }
+    .quick-btns { display: flex; gap: 8px; margin-top: 8px; }
+    .quick-btn { flex: 1; padding: 8px; background: var(--tg-theme-secondary-bg-color, #f0f0f0); color: var(--tg-theme-text-color, #000); border: 1px solid #ddd; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .primary { width: 100%; margin-top: 16px; padding: 14px; background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+    #error { color: red; margin-top: 10px; display: none; font-size: 13px; }
+    #result { margin-top: 20px; display: none; }
+
+    .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+    .card { background: var(--tg-theme-secondary-bg-color, #f5f5f5); border-radius: 10px; padding: 10px 8px; text-align: center; }
+    .card-label { font-size: 11px; opacity: 0.6; margin-bottom: 4px; }
+    .card-value { font-size: 15px; font-weight: 600; }
+    .card-value.income { color: #27ae60; }
+    .card-value.expense { color: #e74c3c; }
+    .card-value.net-pos { color: #27ae60; }
+    .card-value.net-neg { color: #e74c3c; }
+
+    .chart-section { margin-bottom: 28px; }
+    .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; opacity: 0.8; }
+    .chart-wrap { position: relative; width: 100%; max-width: 280px; margin: 0 auto; }
+    .chart-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+    .chart-center-label { font-size: 11px; opacity: 0.6; }
+    .chart-center-value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+
+    .tooltip-box { background: var(--tg-theme-secondary-bg-color, #f5f5f5); border: 1px solid #ddd; border-radius: 8px; padding: 8px 12px; margin-top: 10px; text-align: center; font-size: 13px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+    .tooltip-name { font-weight: 600; margin-right: 6px; }
+    .tooltip-amt { opacity: 0.8; }
+
+    .no-data { text-align: center; opacity: 0.5; font-size: 13px; padding: 20px 0; }
+  </style>
+</head>
+<body>
+  <h2>Statistics</h2>
+  <div id="error"></div>
+
+  <label>Ledger</label>
+  <select id="ledger">
+    <option value="0">All Ledgers</option>
+  </select>
+
+  <label>Date Range</label>
+  <div class="quick-btns">
+    <button class="quick-btn" onclick="setThisMonth()">This Month</button>
+    <button class="quick-btn" onclick="setThisYear()">This Year</button>
+  </div>
+  <label>Start</label>
+  <input type="date" id="start">
+  <label>End</label>
+  <input type="date" id="end">
+
+  <button class="primary" onclick="load()">View Stats</button>
+
+  <div id="result">
+    <div class="summary-cards">
+      <div class="card">
+        <div class="card-label">Income</div>
+        <div class="card-value income" id="r-income">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Expense</div>
+        <div class="card-value expense" id="r-expense">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Net</div>
+        <div class="card-value" id="r-net">—</div>
+      </div>
+    </div>
+
+    <div class="chart-section" id="section-cat">
+      <div class="chart-title">Expenses by Category</div>
+      <div class="chart-wrap">
+        <canvas id="chart-cat"></canvas>
+        <div class="chart-center">
+          <div class="chart-center-label" id="cat-center-label">Total</div>
+          <div class="chart-center-value" id="cat-center-value">—</div>
+        </div>
+      </div>
+      <div class="tooltip-box" id="cat-tooltip">Tap a slice to see details</div>
+    </div>
+
+    <div class="chart-section" id="section-ledger">
+      <div class="chart-title">Expenses by Ledger</div>
+      <div class="chart-wrap">
+        <canvas id="chart-ledger"></canvas>
+        <div class="chart-center">
+          <div class="chart-center-label" id="ledger-center-label">Total</div>
+          <div class="chart-center-value" id="ledger-center-value">—</div>
+        </div>
+      </div>
+      <div class="tooltip-box" id="ledger-tooltip">Tap a slice to see details</div>
+    </div>
+  </div>
+
+  <script src="../static/app.js"></script>
+  <script>
+    let chartCat = null;
+    let chartLedger = null;
+    const COLORS = ["#2481cc","#27ae60","#e74c3c","#f39c12","#9b59b6","#1abc9c","#e67e22","#34495e","#e91e63","#00bcd4"];
+
+    async function init() {
+      const res = await apiFetch("/api/ledgers");
+      if (!res.ok) return;
+      const ledgers = await res.json();
+      const sel = document.getElementById("ledger");
+      ledgers.forEach(l => {
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = l.emoji + " " + l.name;
+        sel.appendChild(opt);
+      });
+      setThisMonth();
+    }
+
+    function setThisMonth() {
+      const now = new Date();
+      document.getElementById("start").value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+      document.getElementById("end").value = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+    }
+
+    function setThisYear() {
+      const y = new Date().getFullYear();
+      document.getElementById("start").value = y + "-01-01";
+      document.getElementById("end").value = y + "-12-31";
+    }
+
+    async function load() {
+      hideError();
+      const ledgerID = document.getElementById("ledger").value;
+      const start = document.getElementById("start").value;
+      const end = document.getElementById("end").value;
+      if (!start || !end) { showError("Select a date range."); return; }
+
+      const res = await apiFetch(`/api/stats?ledger_id=${ledgerID}&start=${start}&end=${end}`);
+      if (!res.ok) { showError("Failed to load stats."); return; }
+      const data = await res.json();
+
+      const cur = data.base_currency;
+      document.getElementById("r-income").textContent = fmt(data.total_income, cur);
+      document.getElementById("r-expense").textContent = fmt(data.total_expense, cur);
+      const netEl = document.getElementById("r-net");
+      netEl.textContent = fmt(data.net, cur);
+      netEl.className = "card-value " + (data.net >= 0 ? "net-pos" : "net-neg");
+
+      renderChart("cat", data.by_category || [], d => d.category, data.total_expense, cur);
+      renderChart("ledger", data.by_ledger || [], d => d.ledger_name, data.total_expense, cur);
+
+      document.getElementById("result").style.display = "block";
+    }
+
+    function fmt(val, cur) {
+      return val.toFixed(0) + " " + cur;
+    }
+
+    function renderChart(key, items, labelFn, total, cur) {
+      items = [...items].sort((a, b) => b.amount - a.amount);
+      const canvas = document.getElementById("chart-" + key);
+      const centerValue = document.getElementById(key + "-center-value");
+      const centerLabel = document.getElementById(key + "-center-label");
+      const tooltip = document.getElementById(key + "-tooltip");
+
+      centerValue.textContent = fmt(total, cur);
+      centerLabel.textContent = "Total";
+      tooltip.innerHTML = "Tap a slice to see details";
+
+      if (chartCat && key === "cat") { chartCat.destroy(); chartCat = null; }
+      if (chartLedger && key === "ledger") { chartLedger.destroy(); chartLedger = null; }
+
+      if (!items.length) {
+        canvas.style.display = "none";
+        tooltip.textContent = "No data";
+        return;
+      }
+      canvas.style.display = "block";
+
+      const chart = new Chart(canvas, {
+        type: "doughnut",
+        data: {
+          labels: items.map(labelFn),
+          datasets: [{
+            data: items.map(d => d.amount),
+            backgroundColor: items.map((_, i) => COLORS[i % COLORS.length]),
+            borderWidth: 2,
+            borderColor: getComputedStyle(document.body).getPropertyValue("--tg-theme-bg-color") || "#fff",
+            hoverOffset: 8,
+          }]
+        },
+        options: {
+          cutout: "62%",
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          onClick(_, elements) {
+            if (!elements.length) {
+              centerValue.textContent = fmt(total, cur);
+              centerLabel.textContent = "Total";
+              tooltip.innerHTML = "Tap a slice to see details";
+              return;
+            }
+            const idx = elements[0].index;
+            const item = items[idx];
+            const name = labelFn(item);
+            centerValue.textContent = fmt(item.amount, cur);
+            centerLabel.textContent = name;
+            tooltip.innerHTML = `<span class="tooltip-name">${name}</span><span class="tooltip-amt">${fmt(item.amount, cur)} · ${item.percentage.toFixed(1)}%</span>`;
+          }
+        }
+      });
+
+      if (key === "cat") chartCat = chart;
+      else chartLedger = chart;
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Record</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 16px; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); }
+    label { display: block; margin-top: 12px; font-size: 13px; opacity: 0.7; }
+    select, input { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; box-sizing: border-box; background: var(--tg-theme-secondary-bg-color, #f5f5f5); color: var(--tg-theme-text-color, #000); }
+    input[type="date"] { -webkit-appearance: none; appearance: none; }
+    button { width: 100%; margin-top: 20px; padding: 14px; background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+    #error { color: red; margin-top: 10px; display: none; font-size: 13px; }
+    #category-row { display: block; }
+    #recurring-section { margin-top: 16px; padding: 14px; background: var(--tg-theme-secondary-bg-color, #f5f5f5); border-radius: 12px; display: none; overflow: hidden; }
+    .freq-tabs { display: flex; gap: 8px; margin-top: 4px; }
+    .freq-tab { flex: 1; padding: 9px; border: 1.5px solid #ddd; border-radius: 8px; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); cursor: pointer; font-size: 14px; text-align: center; }
+    .freq-tab.active { border-color: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-color, #2481cc); font-weight: 600; }
+    .day-grid-label { font-size: 12px; opacity: 0.6; margin-top: 14px; margin-bottom: 6px; }
+    .day-buttons { display: grid; gap: 6px; }
+    .day-buttons.weekly { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .day-buttons.monthly { grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); }
+    .day-btn { border: 1.5px solid #ddd; border-radius: 50%; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); cursor: pointer; font-size: 12px; font-weight: 500; text-align: center; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; padding: 0; width: 100%; min-width: 0; }
+    .day-btn.selected { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); border-color: var(--tg-theme-button-color, #2481cc); }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding: 10px 12px; background: var(--tg-theme-secondary-bg-color, #f5f5f5); border-radius: 10px; }
+    .toggle-row span { font-size: 14px; font-weight: 500; }
+    input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: var(--tg-theme-button-color, #2481cc); }
+  </style>
+</head>
+<body>
+  <h2>Add Record</h2>
+  <div id="error"></div>
+
+  <label>Ledger</label>
+  <select id="ledger"></select>
+
+  <label>Type</label>
+  <select id="type" onchange="onTypeChange()">
+    <option value="expense">Expense</option>
+    <option value="income">Income</option>
+  </select>
+
+  <div id="category-row">
+    <label>Category</label>
+    <select id="category"></select>
+  </div>
+
+  <label>Currency</label>
+  <select id="currency"></select>
+
+  <label>Amount</label>
+  <input type="number" id="amount" min="0.01" step="0.01" placeholder="0.00">
+
+  <label>Date</label>
+  <input type="date" id="date">
+
+  <label>Description (optional)</label>
+  <input type="text" id="description" maxlength="100" placeholder="Leave blank to skip">
+
+  <div class="toggle-row">
+    <span>Recurring</span>
+    <input type="checkbox" id="recurring-toggle" onchange="onRecurringToggle()">
+  </div>
+
+  <div id="recurring-section">
+    <label>Frequency</label>
+    <div class="freq-tabs">
+      <button type="button" class="freq-tab active" id="tab-weekly" onclick="setFreq('weekly')">Weekly</button>
+      <button type="button" class="freq-tab" id="tab-monthly" onclick="setFreq('monthly')">Monthly</button>
+    </div>
+    <input type="hidden" id="frequency" value="weekly">
+
+    <div class="day-grid-label" id="day-grid-label">Select days of the week</div>
+    <div class="day-buttons weekly" id="day-buttons"></div>
+  </div>
+
+  <button id="save-btn" onclick="submit()">Save</button>
+
+  <script src="../static/app.js"></script>
+  <script>
+    async function load() {
+      const [catsRes, ledgersRes, cursRes] = await Promise.all([
+        apiFetch("/api/categories"),
+        apiFetch("/api/ledgers"),
+        apiFetch("/api/currencies"),
+      ]);
+
+      if (!catsRes.ok || !ledgersRes.ok || !cursRes.ok) {
+        showError("Failed to load data. Please try again.");
+        return;
+      }
+
+      const cats = await catsRes.json();
+      const ledgers = await ledgersRes.json();
+      const currencies = await cursRes.json();
+
+      const catSel = document.getElementById("category");
+      cats.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.code;
+        opt.textContent = c.emoji + " " + c.name;
+        catSel.appendChild(opt);
+      });
+
+      const ledgerSel = document.getElementById("ledger");
+      ledgers.forEach(l => {
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = l.emoji + " " + l.name;
+        ledgerSel.appendChild(opt);
+      });
+
+      const curSel = document.getElementById("currency");
+      currencies.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = c;
+        curSel.appendChild(opt);
+      });
+
+      // default date to today
+      document.getElementById("date").value = new Date().toISOString().split("T")[0];
+    }
+
+    function onTypeChange() {
+      const type = document.getElementById("type").value;
+      document.getElementById("category-row").style.display = type === "expense" ? "block" : "none";
+    }
+
+    function onRecurringToggle() {
+      const on = document.getElementById("recurring-toggle").checked;
+      document.getElementById("recurring-section").style.display = on ? "block" : "none";
+      if (on) renderDayButtons();
+    }
+
+    function setFreq(freq) {
+      document.getElementById("frequency").value = freq;
+      document.getElementById("tab-weekly").classList.toggle("active", freq === "weekly");
+      document.getElementById("tab-monthly").classList.toggle("active", freq === "monthly");
+      renderDayButtons();
+    }
+
+    function renderDayButtons() {
+      const freq = document.getElementById("frequency").value;
+      const container = document.getElementById("day-buttons");
+      container.innerHTML = "";
+      container.className = "day-buttons " + freq;
+
+      document.getElementById("day-grid-label").textContent =
+        freq === "weekly" ? "Select days of the week" : "Select days of the month";
+
+      const labels = freq === "weekly"
+        ? ["Su","Mo","Tu","We","Th","Fr","Sa"]
+        : Array.from({length: 31}, (_, i) => String(i + 1));
+
+      labels.forEach((label, i) => {
+        const val = freq === "weekly" ? i : i + 1;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "day-btn";
+        btn.textContent = label;
+        btn.dataset.value = val;
+        btn.onclick = () => btn.classList.toggle("selected");
+        container.appendChild(btn);
+      });
+    }
+
+    function getSelectedDays() {
+      return Array.from(document.querySelectorAll(".day-btn.selected"))
+        .map(b => b.dataset.value)
+        .join(",");
+    }
+
+    async function submit() {
+      hideError();
+      const amount = parseFloat(document.getElementById("amount").value);
+      if (!amount || amount < 0.01) { showError("Enter a valid amount."); return; }
+
+      const type = document.getElementById("type").value;
+      const isRecurring = document.getElementById("recurring-toggle").checked;
+
+      const btn = document.getElementById("save-btn");
+      btn.disabled = true;
+
+      if (isRecurring) {
+        const days = getSelectedDays();
+        if (!days) { showError("Select at least one day."); btn.disabled = false; return; }
+
+        const payload = {
+          ledger_id: parseInt(document.getElementById("ledger").value),
+          type: type,
+          category_code: type === "expense" ? document.getElementById("category").value : "",
+          currency: document.getElementById("currency").value,
+          amount: amount,
+          date: document.getElementById("date").value,
+          description: document.getElementById("description").value,
+          frequency: document.getElementById("frequency").value,
+          days: days,
+        };
+
+        const res = await apiFetch("/api/recurring", { method: "POST", body: JSON.stringify(payload) });
+        if (!res.ok) {
+          const data = await res.json();
+          showError(data.error || "Failed to save.");
+          btn.disabled = false;
+          return;
+        }
+        tg.close();
+        return;
+      } else {
+        const payload = {
+          ledger_id: parseInt(document.getElementById("ledger").value),
+          type: type,
+          category_code: type === "expense" ? document.getElementById("category").value : "",
+          currency: document.getElementById("currency").value,
+          amount: amount,
+          date: document.getElementById("date").value,
+          description: document.getElementById("description").value,
+        };
+
+        const res = await apiFetch("/api/expenses", { method: "POST", body: JSON.stringify(payload) });
+        if (!res.ok) {
+          const data = await res.json();
+          showError(data.error || "Failed to save.");
+          btn.disabled = false;
+          return;
+        }
+      }
+
+      tg.close();
+    }
+
+    load();
+  </script>
+</body>
+</html>

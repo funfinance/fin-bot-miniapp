@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Data and logs
+data/
+logs/
+*.db
+*.log
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+finbot
+
+# Test files
+*_test.go
+test/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# Config (will be mounted)
+configs/config.yaml
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# claude
+.claude/

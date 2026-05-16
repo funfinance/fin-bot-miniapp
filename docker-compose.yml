@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  finbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: finbot-miniapp:latest
+    container_name: finbot-miniapp
+    restart: on-failure:3
+
+    environment:
+      - TZ=Asia/Tokyo
+
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+    ports:
+      - "8080:8080"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "13"
+
+    networks:
+      - finbot-network
+
+networks:
+  finbot-network:
+    driver: bridge
