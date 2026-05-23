@@ -77,6 +77,30 @@ type PostRecurringRequest struct {
 	Days         string  `json:"days"`      // e.g. "1,3,5" or "1,15"
 }
 
+type RecurringResponse struct {
+	ID            uint    `json:"id"`
+	LedgerID      uint    `json:"ledger_id"`
+	Type          string  `json:"type"`
+	CategoryCode  string  `json:"category_code"`
+	Currency      string  `json:"currency"`
+	Amount        float64 `json:"amount"`
+	Description   string  `json:"description"`
+	Frequency     string  `json:"frequency"`
+	Days          string  `json:"days"`
+	NextTriggerAt string  `json:"next_trigger_at"`
+}
+
+type PutRecurringRequest struct {
+	LedgerID     uint    `json:"ledger_id"`
+	Type         string  `json:"type"`
+	CategoryCode string  `json:"category_code"`
+	Currency     string  `json:"currency"`
+	Amount       float64 `json:"amount"`
+	Description  string  `json:"description"`
+	Frequency    string  `json:"frequency"`
+	Days         string  `json:"days"`
+}
+
 type ErrorResponse struct {
 	Error string `json:"error"`
 }

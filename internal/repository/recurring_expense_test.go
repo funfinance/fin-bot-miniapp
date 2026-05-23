@@ -130,6 +130,41 @@ func TestRecurringRepository_Deactivate(t *testing.T) {
 	}
 }
 
+func TestRecurringRepository_Update(t *testing.T) {
+	db := setupRecurringTestDB(t)
+	repo := createRecurringTestRepo(db)
+
+	next := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	r := &model.RecurringExpense{UserID: 12345, Frequency: "monthly", Days: "1", Amount: 100, Currency: "JPY", NextTriggerAt: next, Active: true}
+	repo.Create(r)
+
+	newNext := next.AddDate(0, 1, 0).Truncate(time.Second)
+	updated := &model.RecurringExpense{
+		ID:            r.ID,
+		UserID:        12345,
+		Frequency:     "weekly",
+		Days:          "1,3",
+		Amount:        200,
+		Currency:      "USD",
+		NextTriggerAt: newNext,
+	}
+	if err := repo.Update(updated); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	var got model.RecurringExpense
+	db.First(&got, r.ID)
+	if got.Amount != 200 {
+		t.Errorf("expected Amount=200, got %.2f", got.Amount)
+	}
+	if got.Frequency != "weekly" {
+		t.Errorf("expected Frequency=weekly, got %s", got.Frequency)
+	}
+	if got.Days != "1,3" {
+		t.Errorf("expected Days=1,3, got %s", got.Days)
+	}
+}
+
 func TestRecurringRepository_DeactivateWrongUser(t *testing.T) {
 	db := setupRecurringTestDB(t)
 	repo := createRecurringTestRepo(db)

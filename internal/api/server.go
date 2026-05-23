@@ -55,6 +55,9 @@ func NewServer(
 	mux.Handle("GET /api/stats", auth(http.HandlerFunc(h.GetStats)))
 	mux.Handle("GET /api/export", auth(http.HandlerFunc(h.GetExport)))
 	mux.Handle("POST /api/recurring", auth(http.HandlerFunc(h.PostRecurring)))
+	mux.Handle("GET /api/recurring", auth(http.HandlerFunc(h.GetRecurring)))
+	mux.Handle("PUT /api/recurring/{id}", auth(http.HandlerFunc(h.PutRecurring)))
+	mux.Handle("DELETE /api/recurring/{id}", auth(http.HandlerFunc(h.DeleteRecurring)))
 
 	return &Server{
 		httpServer: &http.Server{

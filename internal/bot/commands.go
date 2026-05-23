@@ -63,6 +63,16 @@ func (h *Handler) handleUndo(c tele.Context) error {
 	return c.Send("Tap the button to review and undo:", markup)
 }
 
+func (h *Handler) handleRecurring(c tele.Context) error {
+	if h.isGroup(c) {
+		return c.Send("Please message me privately to manage recurring expenses: @" + h.bot.Me.Username)
+	}
+	markup := &tele.ReplyMarkup{}
+	btn := markup.WebApp("🔁 Recurring Expenses", &tele.WebApp{URL: h.miniAppURL + "/app/recurring.html"})
+	markup.Inline(markup.Row(btn))
+	return c.Send("Tap the button to manage your recurring expenses:", markup)
+}
+
 func (h *Handler) handleAddCat(c tele.Context) error {
 	args := c.Args()
 	if len(args) < 3 {
@@ -101,6 +111,7 @@ func (h *Handler) handleHelp(c tele.Context) error {
 	return c.Send(`Finance Bot — Commands
 
 /add        Record an expense or income
+/recurring  Manage recurring expenses
 /stats      View statistics
 /export     Export records to Excel
 /undo       Undo the last record

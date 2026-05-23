@@ -14,6 +14,7 @@ type RecurringExpenseRepository interface {
 	GetDue(now time.Time) ([]*model.RecurringExpense, error)
 	UpdateTrigger(id uint, lastTriggeredAt time.Time, nextTriggerAt time.Time) error
 	GetActiveByUserID(userID int64) ([]*model.RecurringExpense, error)
+	Update(r *model.RecurringExpense) error
 	Deactivate(id uint, userID int64) error
 }
 
@@ -46,6 +47,20 @@ func (r *recurringExpenseRepo) GetActiveByUserID(userID int64) ([]*model.Recurri
 	var records []*model.RecurringExpense
 	err := r.db.Where("user_id = ? AND active = ?", userID, true).Find(&records).Error
 	return records, err
+}
+
+func (r *recurringExpenseRepo) Update(rec *model.RecurringExpense) error {
+	return r.db.Model(rec).Where("id = ? AND user_id = ?", rec.ID, rec.UserID).Updates(map[string]any{
+		"ledger_id":       rec.LedgerID,
+		"type":            rec.Type,
+		"amount":          rec.Amount,
+		"currency":        rec.Currency,
+		"category":        rec.Category,
+		"description":     rec.Description,
+		"frequency":       rec.Frequency,
+		"days":            rec.Days,
+		"next_trigger_at": rec.NextTriggerAt,
+	}).Error
 }
 
 func (r *recurringExpenseRepo) Deactivate(id uint, userID int64) error {
