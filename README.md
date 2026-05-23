@@ -77,7 +77,7 @@ logger:
   file: "./logs/bot.log"
 
 rate:
-  base_currency: "JPY"            # Base currency for conversions and statistics
+  base_currency: "JPY"            # Base currency for conversions and statistics. However, when you modify the base, you must configure the API key.
   update_interval: 24h
   api_key: "YOUR_API_KEY"         # Optional, from exchangerate-api.com
   supported_currencies:           # Currencies shown in the Mini App dropdown; base_currency is always prepended automatically
