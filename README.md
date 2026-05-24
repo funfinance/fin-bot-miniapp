@@ -5,7 +5,7 @@ A Telegram bot with a Mini App UI for tracking personal expenses and income. Rec
 ## Features
 
 - Record expenses and income via a Telegram Mini App form
-- Recurring expenses — weekly or monthly schedules, multi-day support (e.g. 1st and 15th), auto-triggered daily by a background scheduler
+- Recurring expenses — weekly or monthly schedules, multi-day support (e.g. 1st and 15th), auto-triggered daily by a background scheduler; view, edit and stop rules via `/recurring`
 - Multiple ledgers (account books) per user
 - Custom categories with emoji
 - Multi-currency support with automatic conversion to a base currency
@@ -77,7 +77,7 @@ logger:
   file: "./logs/bot.log"
 
 rate:
-  base_currency: "JPY"            # Base currency for conversions and statistics. However, when you modify the base, you must configure the API key. 
+  base_currency: "JPY"            # Base currency for conversions and statistics. However, when you modify the base, you must configure the API key.
   update_interval: 24h
   api_key: "YOUR_API_KEY"         # Optional, from exchangerate-api.com
   supported_currencies:           # Currencies shown in the Mini App dropdown; base_currency is always prepended automatically
@@ -115,6 +115,7 @@ The container mounts `./configs/config.yaml`, `./data/`, and `./logs/` from the 
 | Command | Description |
 |---|---|
 | `/add` | Open Mini App to record an expense or income |
+| `/recurring` | View, edit and stop recurring expenses |
 | `/stats` | View statistics for a date range |
 | `/export` | Export records to Excel (file sent in chat) |
 | `/undo` | Delete the most recent record |

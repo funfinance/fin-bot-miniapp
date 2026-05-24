@@ -47,6 +47,7 @@ func (h *Handler) Register() {
 	h.bot.Handle("/export", h.handleExport)
 	h.bot.Handle("/undo", h.handleUndo)
 	h.bot.Handle("/history", h.handleHistory)
+	h.bot.Handle("/recurring", h.handleRecurring)
 	h.bot.Handle("/addcat", h.handleAddCat)
 	h.bot.Handle("/addledger", h.handleAddLedger)
 	h.bot.Handle("/help", h.handleHelp)

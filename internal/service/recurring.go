@@ -50,6 +50,34 @@ func (s *RecurringService) Create(r *model.RecurringExpense, initialDate time.Ti
 	return nil
 }
 
+func (s *RecurringService) GetActiveByUserID(userID int64) ([]*model.RecurringExpense, error) {
+	return s.repo.GetActiveByUserID(userID)
+}
+
+func (s *RecurringService) Update(userID int64, id uint, r *model.RecurringExpense) error {
+	next, err := nextTrigger(r.Frequency, r.Days, time.Now())
+	if err != nil {
+		return fmt.Errorf("calculate next trigger: %w", err)
+	}
+	r.ID = id
+	r.UserID = userID
+	r.NextTriggerAt = next
+	if err := s.repo.Update(r); err != nil {
+		return err
+	}
+	logger.Info("Updated recurring id=%d user=%d freq=%s days=%s next=%s",
+		id, userID, r.Frequency, r.Days, next.Format("2006-01-02"))
+	return nil
+}
+
+func (s *RecurringService) Deactivate(id uint, userID int64) error {
+	if err := s.repo.Deactivate(id, userID); err != nil {
+		return err
+	}
+	logger.Info("Deactivated recurring id=%d user=%d", id, userID)
+	return nil
+}
+
 // Start runs the daily scheduler. Blocks until ctx is cancelled.
 func (s *RecurringService) Start(ctx context.Context) {
 	logger.Info("RecurringService: scheduler started")

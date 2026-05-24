@@ -479,6 +479,98 @@ func (h *handlers) PostRecurring(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GET /api/recurring
+func (h *handlers) GetRecurring(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	records, err := h.recurringService.GetActiveByUserID(userID)
+	if err != nil {
+		logger.Error("GetRecurring user=%d: %v", userID, err)
+		jsonError(w, "failed to get recurring expenses", http.StatusInternalServerError)
+		return
+	}
+	resp := make([]RecurringResponse, 0, len(records))
+	for _, rec := range records {
+		resp = append(resp, RecurringResponse{
+			ID:            rec.ID,
+			LedgerID:      rec.LedgerID,
+			Type:          rec.Type,
+			CategoryCode:  rec.Category,
+			Currency:      rec.Currency,
+			Amount:        rec.Amount,
+			Description:   rec.Description,
+			Frequency:     rec.Frequency,
+			Days:          rec.Days,
+			NextTriggerAt: rec.NextTriggerAt.Format("2006-01-02"),
+		})
+	}
+	jsonOK(w, resp)
+}
+
+// PUT /api/recurring/{id}
+func (h *handlers) PutRecurring(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var req PutRecurringRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Type != constant.TypeExpense && req.Type != constant.TypeIncome {
+		jsonError(w, "type must be 'expense' or 'income'", http.StatusBadRequest)
+		return
+	}
+	if req.Amount < constant.MinAmount {
+		jsonError(w, fmt.Sprintf("amount must be >= %.2f", constant.MinAmount), http.StatusBadRequest)
+		return
+	}
+	if req.Frequency != "weekly" && req.Frequency != "monthly" {
+		jsonError(w, "frequency must be 'weekly' or 'monthly'", http.StatusBadRequest)
+		return
+	}
+	if req.Days == "" {
+		jsonError(w, "days is required", http.StatusBadRequest)
+		return
+	}
+
+	rec := &model.RecurringExpense{
+		LedgerID:    req.LedgerID,
+		Type:        req.Type,
+		Amount:      req.Amount,
+		Currency:    req.Currency,
+		Category:    req.CategoryCode,
+		Description: req.Description,
+		Frequency:   req.Frequency,
+		Days:        req.Days,
+	}
+	if err := h.recurringService.Update(userID, uint(id), rec); err != nil {
+		logger.Error("PutRecurring user=%d id=%d: %v", userID, id, err)
+		jsonError(w, "failed to update recurring expense", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]any{"id": id, "next_trigger_at": rec.NextTriggerAt.Format("2006-01-02")})
+}
+
+// DELETE /api/recurring/{id}
+func (h *handlers) DeleteRecurring(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	if err := h.recurringService.Deactivate(uint(id), userID); err != nil {
+		logger.Error("DeleteRecurring user=%d id=%d: %v", userID, id, err)
+		jsonError(w, "failed to delete recurring expense", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func parseDateRange(startStr, endStr string) (time.Time, time.Time, error) {
 	start, err := time.Parse("2006-01-02", startStr)
 	if err != nil {

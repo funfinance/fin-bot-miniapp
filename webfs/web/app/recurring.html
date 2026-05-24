@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recurring Expenses</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 0; margin: 0; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); }
+    .page { display: none; padding: 16px; }
+    .page.active { display: block; }
+    h2 { margin: 0 0 16px; font-size: 18px; }
+    .back-btn { background: none; border: none; color: var(--tg-theme-button-color, #2481cc); font-size: 14px; padding: 0; cursor: pointer; margin-bottom: 12px; display: block; }
+    #error { color: red; margin: 16px; font-size: 13px; display: none; }
+
+    /* List page */
+    .card { background: var(--tg-theme-secondary-bg-color, #f5f5f5); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .card:active { opacity: 0.7; }
+    .card-amount { font-size: 17px; font-weight: 700; }
+    .card-meta { font-size: 12px; opacity: 0.6; margin-top: 3px; }
+    .card-next { font-size: 12px; opacity: 0.5; margin-top: 2px; }
+    .chevron { font-size: 20px; opacity: 0.4; margin-left: 8px; }
+    .empty { text-align: center; opacity: 0.5; margin-top: 60px; font-size: 15px; }
+
+    /* Edit page */
+    label { display: block; margin-top: 12px; font-size: 13px; opacity: 0.7; }
+    select, input[type="number"], input[type="text"] { width: 100%; padding: 10px; margin-top: 4px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; background: var(--tg-theme-secondary-bg-color, #f5f5f5); color: var(--tg-theme-text-color, #000); }
+    .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-row button { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 15px; cursor: pointer; }
+    .btn-save { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
+    .btn-delete { background: #e74c3c; color: #fff; }
+    #edit-error { color: red; margin-top: 10px; display: none; font-size: 13px; }
+    #edit-category-row { display: block; }
+
+    /* Recurring day picker */
+    .freq-tabs { display: flex; gap: 8px; margin-top: 4px; }
+    .freq-tab { flex: 1; padding: 9px; border: 1.5px solid #ddd; border-radius: 8px; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); cursor: pointer; font-size: 14px; text-align: center; width: auto; margin-top: 0; }
+    .freq-tab.active { border-color: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-color, #2481cc); font-weight: 600; }
+    .day-picker { margin-top: 16px; padding: 14px; background: var(--tg-theme-secondary-bg-color, #f5f5f5); border-radius: 12px; overflow: hidden; }
+    .day-grid-label { font-size: 12px; opacity: 0.6; margin-bottom: 8px; }
+    .day-buttons { display: grid; gap: 6px; }
+    .day-buttons.weekly { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .day-buttons.monthly { grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); }
+    .day-btn { border: 1.5px solid #ddd; border-radius: 50%; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); cursor: pointer; font-size: 12px; font-weight: 500; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; padding: 0; width: 100%; min-width: 0; margin-top: 0; }
+    .day-btn.selected { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); border-color: var(--tg-theme-button-color, #2481cc); }
+  </style>
+</head>
+<body>
+  <div id="error"></div>
+
+  <!-- Page 1: List -->
+  <div id="page-list" class="page">
+    <h2>🔁 Recurring</h2>
+    <div id="list"></div>
+  </div>
+
+  <!-- Page 2: Edit -->
+  <div id="page-edit" class="page">
+    <button class="back-btn" onclick="showList()">← Back</button>
+    <h2>Edit Recurring</h2>
+    <div id="edit-error"></div>
+
+    <label>Ledger</label>
+    <select id="edit-ledger"></select>
+
+    <label>Type</label>
+    <select id="edit-type" onchange="onEditTypeChange()">
+      <option value="expense">Expense</option>
+      <option value="income">Income</option>
+    </select>
+
+    <div id="edit-category-row">
+      <label>Category</label>
+      <select id="edit-category"></select>
+    </div>
+
+    <label>Currency</label>
+    <select id="edit-currency"></select>
+
+    <label>Amount</label>
+    <input type="number" id="edit-amount" min="0.01" step="0.01" placeholder="0.00">
+
+    <label>Description (optional)</label>
+    <input type="text" id="edit-description" maxlength="100" placeholder="Leave blank to skip">
+
+    <label>Frequency</label>
+    <div class="freq-tabs">
+      <button type="button" class="freq-tab active" id="tab-weekly" onclick="setFreq('weekly')">Weekly</button>
+      <button type="button" class="freq-tab" id="tab-monthly" onclick="setFreq('monthly')">Monthly</button>
+    </div>
+    <input type="hidden" id="edit-frequency" value="weekly">
+
+    <div class="day-picker">
+      <div class="day-grid-label" id="day-grid-label">Select days of the week</div>
+      <div class="day-buttons weekly" id="day-buttons"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-delete" onclick="stopRecurring()">Stop</button>
+      <button class="btn-save" id="save-btn" onclick="saveEdit()">Save</button>
+    </div>
+  </div>
+
+  <script src="../static/app.js"></script>
+  <script>
+    let currentID = null;
+    let cats = [], ledgers = [], currencies = [];
+
+    function showPage(id) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    async function init() {
+      const [catsRes, ledgersRes, cursRes] = await Promise.all([
+        apiFetch('/api/categories'),
+        apiFetch('/api/ledgers'),
+        apiFetch('/api/currencies'),
+      ]);
+      if (!catsRes.ok || !ledgersRes.ok || !cursRes.ok) {
+        showError('Failed to load data.'); return;
+      }
+      cats = await catsRes.json();
+      ledgers = await ledgersRes.json();
+      currencies = await cursRes.json();
+      populateSelects();
+      loadList();
+    }
+
+    function populateSelects() {
+      const catSel = document.getElementById('edit-category');
+      cats.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.code; o.textContent = c.emoji + ' ' + c.name;
+        catSel.appendChild(o);
+      });
+      const ledgerSel = document.getElementById('edit-ledger');
+      ledgers.forEach(l => {
+        const o = document.createElement('option');
+        o.value = l.id; o.textContent = l.emoji + ' ' + l.name;
+        ledgerSel.appendChild(o);
+      });
+      const curSel = document.getElementById('edit-currency');
+      currencies.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        curSel.appendChild(o);
+      });
+    }
+
+    async function loadList() {
+      const res = await apiFetch('/api/recurring');
+      if (!res.ok) { showError('Failed to load.'); return; }
+      const records = await res.json();
+
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+
+      if (!records || records.length === 0) {
+        list.innerHTML = '<div class="empty">No recurring expenses.<br>Use /add to create one.</div>';
+        showPage('page-list');
+        return;
+      }
+
+      records.forEach(r => {
+        const freqLabel = r.frequency === 'weekly'
+          ? 'Weekly · ' + r.days.split(',').map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][+d]).join(', ')
+          : 'Monthly · day ' + r.days;
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div>
+            <div class="card-amount">${r.amount.toLocaleString()} ${r.currency}</div>
+            <div class="card-meta">${freqLabel}</div>
+            <div class="card-next">Next: ${r.next_trigger_at}</div>
+          </div>
+          <span class="chevron">›</span>`;
+        card.onclick = () => openEdit(r);
+        list.appendChild(card);
+      });
+      showPage('page-list');
+    }
+
+    function showList() {
+      loadList();
+    }
+
+    function openEdit(r) {
+      currentID = r.id;
+      document.getElementById('edit-type').value = r.type;
+      onEditTypeChange();
+      document.getElementById('edit-ledger').value = r.ledger_id;
+      document.getElementById('edit-category').value = r.category_code || '';
+      document.getElementById('edit-currency').value = r.currency;
+      document.getElementById('edit-amount').value = r.amount;
+      document.getElementById('edit-description').value = r.description || '';
+      document.getElementById('edit-error').style.display = 'none';
+
+      setFreq(r.frequency);
+      const selectedDays = r.days.split(',').map(d => d.trim());
+      document.querySelectorAll('.day-btn').forEach(btn => {
+        btn.classList.toggle('selected', selectedDays.includes(btn.dataset.value));
+      });
+
+      showPage('page-edit');
+    }
+
+    function onEditTypeChange() {
+      const type = document.getElementById('edit-type').value;
+      document.getElementById('edit-category-row').style.display = type === 'expense' ? 'block' : 'none';
+    }
+
+    function setFreq(freq) {
+      document.getElementById('edit-frequency').value = freq;
+      document.getElementById('tab-weekly').classList.toggle('active', freq === 'weekly');
+      document.getElementById('tab-monthly').classList.toggle('active', freq === 'monthly');
+      renderDayButtons();
+    }
+
+    function renderDayButtons() {
+      const freq = document.getElementById('edit-frequency').value;
+      const container = document.getElementById('day-buttons');
+      container.innerHTML = '';
+      container.className = 'day-buttons ' + freq;
+      document.getElementById('day-grid-label').textContent =
+        freq === 'weekly' ? 'Select days of the week' : 'Select days of the month';
+
+      const labels = freq === 'weekly'
+        ? ['Su','Mo','Tu','We','Th','Fr','Sa']
+        : Array.from({length: 31}, (_, i) => String(i + 1));
+
+      labels.forEach((label, i) => {
+        const val = freq === 'weekly' ? i : i + 1;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'day-btn';
+        btn.textContent = label;
+        btn.dataset.value = String(val);
+        btn.onclick = () => btn.classList.toggle('selected');
+        container.appendChild(btn);
+      });
+    }
+
+    function getSelectedDays() {
+      return Array.from(document.querySelectorAll('.day-btn.selected'))
+        .map(b => b.dataset.value).join(',');
+    }
+
+    async function saveEdit() {
+      document.getElementById('edit-error').style.display = 'none';
+      const amount = parseFloat(document.getElementById('edit-amount').value);
+      if (!amount || amount < 0.01) { showEditError('Enter a valid amount.'); return; }
+      const days = getSelectedDays();
+      if (!days) { showEditError('Select at least one day.'); return; }
+
+      const btn = document.getElementById('save-btn');
+      btn.disabled = true;
+
+      const type = document.getElementById('edit-type').value;
+      const payload = {
+        ledger_id: parseInt(document.getElementById('edit-ledger').value),
+        type,
+        category_code: type === 'expense' ? document.getElementById('edit-category').value : '',
+        currency: document.getElementById('edit-currency').value,
+        amount,
+        description: document.getElementById('edit-description').value,
+        frequency: document.getElementById('edit-frequency').value,
+        days,
+      };
+
+      const res = await apiFetch('/api/recurring/' + currentID, { method: 'PUT', body: JSON.stringify(payload) });
+      if (!res.ok) {
+        const data = await res.json();
+        showEditError(data.error || 'Failed to save.');
+        btn.disabled = false;
+        return;
+      }
+      btn.disabled = false;
+      showList();
+    }
+
+    async function stopRecurring() {
+      tg.showConfirm('Stop this recurring expense?', async (ok) => {
+        if (!ok) return;
+        const res = await apiFetch('/api/recurring/' + currentID, { method: 'DELETE' });
+        if (!res.ok) { showEditError('Failed to stop.'); return; }
+        showList();
+      });
+    }
+
+    function showEditError(msg) {
+      const el = document.getElementById('edit-error');
+      el.textContent = msg; el.style.display = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>
