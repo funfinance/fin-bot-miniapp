@@ -277,9 +277,9 @@
       const res = await apiFetch(`/api/expenses/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         currentRecordID = id;
-        document.querySelector('.btn-delete').disabled = false;
         showEditError('Failed to delete.'); return;
       }
+      document.querySelector('.btn-delete').disabled = false;
       showRecords();
     }
 
